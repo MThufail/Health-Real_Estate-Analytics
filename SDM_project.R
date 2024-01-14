@@ -1,0 +1,683 @@
+---
+  title: "Health_Realestate_Analytics"
+output: html_document
+---
+  
+  Load **readxl** Library and **Health** Data
+
+```{r}
+library(readxl)
+Health <- read_excel("Health.xlsx")
+head(Health)
+
+```
+
+Display a **summary** of the '**Health**' data frame
+
+```{r}
+
+summary(Health)
+
+```
+
+**Fit** a Linear regression model using **lm**
+  
+  ```{r}
+
+attach(Health)
+lm.fit <- lm(X1 ~ ., data=Health)
+
+```
+
+Compute **Confidence Interval's** for the parameters of the linear regression model and display a detailed summary.
+
+```{r}
+confint(lm.fit)
+summary(lm.fit)
+```
+
+Plotting **residuals** against **predicted** values
+
+The first plot shows the relationship between **residuals vs predicted values.**
+
+It helps in identifying patterns or trends in the residuals, providing insights into the model's fit.
+
+```{r}
+plot(predict(lm.fit), residuals(lm.fit), main = "Residuals vs. Predicted values",
+     xlab = "Predicted values",
+     ylab = "Residuals")
+```
+
+Plotting **studentized** residuals against **predicted** values
+
+The second plot, known as a scale-location plot, assesses the spread of residuals across the range of predicted values. Studentized residuals are residuals divided by their estimated standard deviation, **helps to identify outliers.**
+  
+  ```{r}
+plot(predict(lm.fit), rstudent(lm.fit), main = "Studentized Residuals vs. Predicted values",
+     xlab = "Predicted values",
+     ylab = "Studentized Residuals")
+```
+
+Calculate the **Mean Squared Error (MSE)** of the linear regression model
+
+The Mean Squared Error (MSE) is a measure of the average squared difference between the **predicted** and **actual values**. It quantifies the average magnitude of errors, providing an indication of how well the model predicts the response variable.
+
+**Lower MSE** values **indicate better model** performance.
+
+lm.fit.MSE - Display the calculated Mean Squared Error
+
+```{r}
+lm.fit.MSE <- mean((predict(lm.fit) - X1)^2)
+lm.fit.MSE
+```
+
+**Validation Set approach**
+  
+  The **'set.seed(1)'** ensures that the random numbers generated will be the same every time this code is executed.
+
+Create a random sample of 50:50 split.
+
+```{r}
+
+set.seed(1)
+train <- sample(53, 27)
+```
+
+The formula 'X1 \~ .' indicates that **'X1'** is the **response** **variable**, and all other variables in the 'Health' data frame are predictor variables.
+
+**'subset = train'** specifies that the model should be fit only on the subset of data identified by the 'train' vector.
+
+```{r}
+
+lm.fit1 <- lm(X1 ~ ., Health, subset = train)
+summary(lm.fit1)
+```
+
+**'predict(lm.fit1, Health)'** generates predicted values for the entire dataset based on the fitted model.
+
+**'mean((Health\$X1 - predicted_values)[-train]\^2)'** calculates the MSE for the validation set.
+
+validation.set.MSE -- **'Display the calculated Mean Squared Error for the validation set'**
+  
+  ```{r}
+
+validation.set.MSE <- mean((X1 - predict(lm.fit1, Health))[-train]^2)
+validation.set.MSE
+```
+
+**'The 'I()' function is used to handle non-standard evaluation in the formula, allowing the inclusion of squared terms.' Testing the model by raising the powers to 2(Quadratic) and 3(Cubic).**
+  
+  ```{r}
+lm.fit2 <- lm(X1 ~ I(X2^2)+I(X3^2)+I(X4^2)+I(X5^2), Health, subset = train)
+summary(lm.fit2)
+quad.MSE <- mean((X1 - predict(lm.fit2, Health))[-train]^2)
+quad.MSE
+
+lm.fit3 <- lm(X1 ~ I(X2^3)+I(X3^3)+I(X4^3)+I(X5^3), Health, subset = train)
+summary(lm.fit3)
+cubic.MSE <- mean((X1 - predict(lm.fit3, Health))[-train]^2)
+cubic.MSE
+
+```
+
+**LOOCV**
+  
+  1)Create a vector to store cross-validated errors
+
+2)Perform polynomial models with degrees 1 to 10
+
+3)Fit a generalized linear model (glm) using polynomial terms
+
+**cv.error** - Display the vector of cross-validated errors for each polynomial degree
+
+```{r}
+library(boot)
+cv.error <- rep(0, 10)
+for (i in 1:10) {
+  glm.fit <- glm(X1 ~ poly(X2, i)+poly(X3, i)+poly(X4, i)+poly(X5, i), data = Health)
+  cv.error[i] <- cv.glm(Health , glm.fit)$delta [1]
+}
+cv.error
+
+```
+
+**k-Fold Cross-Validation**
+  
+  Perform 5-fold cross-validation for polynomial models with degrees 1 to 10
+
+```{r}
+library(boot)
+cv.error.k <- rep(0, 10)
+for (i in 1:10) {
+  glm.fit <- glm(X1 ~ poly(X2, i)+poly(X3, i)+poly(X4, i)+poly(X5, i), data = Health)
+  cv.error.k[i] <- cv.glm(Health , glm.fit, K=5)$delta [1]
+}
+cv.error.k
+```
+
+**Ridge regression**
+  
+  1)Create a design matrix '**x**' and response vector '**y**' for the **glmnet**
+  
+  2)Create a sequence of lambda values on a log scale
+
+3)Fit a ridge regression model using the glmnet function. Specify **'alpha = 0'** for ridge regression (L2 penalty), and 'lambda' is the regularization parameter
+
+```{r}
+x <- model.matrix(X1 ~ ., Health)[,-1]
+y <- Health$X1
+
+library(glmnet)
+grid <- 10^seq(10, -2, length = 53)
+ridge.mod <- glmnet(x, y, alpha = 0, lambda = grid)
+
+```
+
+1)Get the dimensions of the coefficient matrix
+
+2)**Calculate the L2 norm** (Euclidean norm) of the coefficients for the **5th lambda value**
+  
+  3)**Calculate the L2 norm** (Euclidean norm) of the coefficients for the **45th lambda value**
+  
+  ```{r}
+dim(coef(ridge.mod))
+ridge.mod$lambda[5]
+coef(ridge.mod)[,5]
+sqrt(sum(coef(ridge.mod)[-1, 5]^2))
+
+dim(coef(ridge.mod))
+ridge.mod$lambda[45]
+coef(ridge.mod)[,45]
+sqrt(sum(coef(ridge.mod)[-1, 45]^2))
+```
+
+Predict the coefficients for the ridge regression model at **lambda = 45**
+  
+  ```{r}
+predict(ridge.mod , s = 45, type = "coefficients")[1:5, ]
+```
+
+1)Create training and test sets
+
+2)Fit a ridge regression model on the training set
+
+3)Predictions and evaluation for lambda = 4, 0 ,1e10
+
+4)Predict the coefficients for Ridge Regression model:
+  
+  ```{r}
+set.seed (1)
+train <- sample(1: nrow(x), nrow(x) / 2)
+test <- (-train)
+y.test <- y[test]
+
+ridge.mod <- glmnet(x[train, ], y[train], alpha = 0, lambda = grid , thresh = 1e-12)
+ridge.pred <- predict(ridge.mod , s = 4, newx = x[test , ])
+mean((ridge.pred - y.test)^2)
+
+ridge.pred <- predict(ridge.mod , s = 1e10, newx = x[test , ])
+mean((ridge.pred - y.test)^2)
+
+ridge.pred <- predict(ridge.mod , s = 0, newx = x[test , ])
+mean((ridge.pred - y.test)^2)
+
+# lm(y ~ x, subset = train)
+predict(ridge.mod , s = 0, exact = T, type = "coefficients", x = x[train, ], y = y[train])[1:5, ]
+```
+
+1)Perform cross-validated ridge regression on the training set
+
+2)Plot the cross-validated mean squared error for different lambda values
+
+3)Find the value of lambda that minimizes the mean squared error
+
+4)Predictions and Evaluation for Test Set Using Best Lambda
+
+5)Fit Ridge Regression Model on Entire Dataset Using Best Lambda
+
+6)Predict Coefficients for Entire Dataset Using Best Lambda
+
+```{r}
+set.seed (1)
+cv.out <- cv.glmnet(x[train , ], y[train], alpha = 0)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+bestlam
+
+ridge.pred <- predict(ridge.mod , s = bestlam, newx = x[test , ])
+ridge.error <- mean((ridge.pred - y.test)^2)
+
+out <- glmnet(x, y, alpha = 0)
+predict(out , s = bestlam, type = "coefficients")[1:5, ]
+```
+
+**Lasso regression**
+  
+  1)Fit Lasso Regression Model
+
+2)Plot Coefficients for Different Lambda Values (Lasso)
+
+3)Cross-Validated Lasso Regression: Performs cross-validated Lasso regression on the training set with **alpha = 1.**
+  
+  4)Plot Cross-Validated **Mean Squared Error** for Different Lambda Values (Lasso)
+
+5)Find the Best Lambda for Lasso Model
+
+6)Predictions and Evaluation for Test Set Using Best Lambda (Lasso)
+
+```{r}
+lasso.mod <- glmnet(x[train , ], y[train], alpha = 1, lambda = grid)
+plot(lasso.mod)
+
+set.seed (1)
+cv.out <- cv.glmnet(x[train , ], y[train], alpha = 1)
+plot(cv.out)
+bestlam <- cv.out$lambda.min
+bestlam
+lasso.pred <- predict(lasso.mod , s = bestlam , newx = x[test , ])
+lasso.error <- mean((lasso.pred - y.test)^2)
+```
+
+1)Fit Lasso Regression Model on Entire Dataset
+
+2)**Predict Coefficients** for Entire Dataset **Using Best Lambda**
+  
+  3)**lasso.coef:** **Displays** all coefficients for the **first** **5 variables**.
+
+4)**lasso.coef[lasso.coef != 0]:** **Displays** only the coefficients that are **non-zero.**
+  
+  ```{r}
+out <- glmnet(x, y, alpha = 1, lambda = grid)
+lasso.coef <- predict(out , type = "coefficients", s = bestlam)[1:5, ]
+lasso.coef
+lasso.coef[lasso.coef != 0]
+```
+
+[**Analysis**]{.underline}:
+  
+  1.  We have trained and validated Health dataset with various regression models and below are the observations
+1.  Linear Regression Test MSE : 2.322
+2.  Quadratic model test MSE : 2.536
+3.  Cubic model test MSE : 3.086
+4.  Validation set test MSE : 2.194
+5.  LOOCV min error : 2.77 with degree = 1
+6.  K fold CV : 2.74 with k = 5 and degree = 1
+7.  Ridge regression model test MSE : 2.150
+8.  Lasso regression model test MSE : 2.172
+
+[**Conclusion**]{.underline} : Out of all these regression models, the least MSE was observed with Ridge Regression model. So, Ridge regression is a potential regression model for this fairly small "toy" dataset which has relatively less number of predictors.
+
+[**Real Estate valaution data set:**]{.underline}
+
+**Read** the **Excel file** and **Load** into real_estate_data. Select columns **2** to 8(as 1st column contains serial numbers) and store th**e result** in the variable 'real_estate_data'.
+
+```{r}
+real_estate_data <- read_excel("Real estate valuation data set.xlsx")
+real_estate_data <- real_estate_data[,2:8]
+real_estate_data
+colnames(real_estate_data)[7] = 'Y'
+```
+
+```{r}
+summary(real_estate_data)
+```
+
+**'Multiple Linear Regression'**
+  
+  Fit a linear regression model using all available predictor variables.
+
+**lm.fit:** Display the fitted linear regression model
+
+```{r}
+attach(real_estate_data)
+lm.fit <- lm( Y ~ ., data = real_estate_data)
+summary (lm.fit)
+```
+
+Compute **Confidence Interval's** for the parameters of the linear regression model and display a detailed summary.
+
+```{r}
+confint(lm.fit)
+```
+
+Plotting **residuals** against **predicted** values
+
+The first plot shows the relationship between **residuals vs predicted values.**
+
+It helps in identifying patterns or trends in the residuals, providing insights into the model's fit.
+
+```{r}
+
+plot(predict(lm.fit), residuals(lm.fit), main = "Residuals vs. Predicted values",
+     xlab = "Predicted values",
+     ylab = "Residuals")
+```
+
+Calculate the **Mean Squared Error (MSE)** of the regression model lm.fit.MSE - Display the calculated Mean Squared Error
+
+```{r}
+lm.fit.MSE <- mean((predict(lm.fit) - Y)^2)
+lm.fit.MSE
+```
+
+**'Ridge Regression'**
+  
+  1)  **Create** the design matrix **'x'** and response vector **'y'**
+  2)  Create a sequence of lambda values on a log scale
+3)  Extract the coefficients for the 50th lambda value
+
+```{r}
+
+library(glmnet)
+x<-model.matrix(Y ~ ., real_estate_data)[,-1]
+y<-real_estate_data$Y
+grid <- 10^seq (10, -2, length = 100)
+ridge.mod <- glmnet (x, y, alpha = 0, lambda = grid)
+coef(ridge.mod)[, 50]
+```
+
+Calculate the **L2 norm (Euclidean norm)** of the coefficients for the **50th lambda value**
+  
+  ```{r}
+
+sqrt(sum(coef(ridge.mod)[-1, 50]^2))
+```
+
+Predict the **coefficients for the ridge regression model at lambda = 50**
+  
+  ```{r}
+predict (ridge.mod , s = 50, type = "coefficients")
+```
+
+The **'set.seed(5)'** ensures that the random numbers generated will be the same every time this code is executed
+
+```{r}
+set.seed (5)
+train <- sample (1: nrow (x), nrow (x) / 2)
+test <- (-train)
+y.test <- y[test]
+```
+
+Calculate the **mean squared error for the predictions on the test set**
+  
+  ```{r}
+ridge.mod <- glmnet (x[train , ], y[train], alpha = 0,
+                     lambda = grid, thresh = 1e-12)
+ridge.pred <- predict (ridge.mod , s = 4, newx = x[test , ])
+mean ((ridge.pred - y.test)^2)
+```
+
+Calculate **mean squared error using the mean of y[train] as a predictor**
+  
+  ```{r}
+mean((mean(y[train]) - y.test)^2)
+```
+
+```{r}
+ridge.pred <- predict (ridge.mod , s = 1e10 , newx = x[test , ])
+mean((ridge.pred - y.test)^2)
+```
+
+```{r}
+ridge.pred <- predict (ridge.mod , s = 0, newx = x[test , ],
+                       exact = T, x = x[train , ], y = y[train])
+mean ((ridge.pred - y.test)^2)
+```
+
+```{r}
+lm( y ~ x, subset = train)
+predict (ridge.mod , s = 0, exact = T, type = "coefficients", x = x[train , ], y = y[train])
+```
+
+```{r}
+set.seed (5)
+cv.out <- cv.glmnet (x[train , ], y[train], alpha = 0)
+plot (cv.out)
+bestlam <- cv.out$lambda.min
+bestlam
+```
+
+Ridge regression test MSE
+
+```{r}
+ridge.pred <- predict (ridge.mod , s = bestlam ,newx = x[test , ])
+ridge.error <- mean((ridge.pred - y.test)^2)
+```
+
+Ridge regression model coefficients
+
+```{r}
+out <- glmnet (x, y, alpha = 0)
+predict (out , type = "coefficients", s = bestlam)
+```
+
+**'LASSO Regression**'
+
+```{r}
+
+lasso.mod <- glmnet (x[train , ], y[train], alpha = 1,
+                     lambda = grid)
+plot (lasso.mod)
+```
+
+Compute the best lambda and test MSE of the lasso regression model.
+
+```{r}
+set.seed(5)
+cv.out <- cv.glmnet (x[train , ], y[train], alpha = 1)
+plot (cv.out)
+bestlam <- cv.out$lambda.min
+lasso.pred <- predict (lasso.mod , s = bestlam, newx = x[test , ])
+lasso.error <- mean ((lasso.pred - y.test)^2)
+```
+
+Lasso model's predictor coefficients.
+
+```{r}
+out <- glmnet (x, y, alpha = 1, lambda = grid)
+lasso.coef <- predict (out , type = "coefficients", s = bestlam)
+lasso.coef
+```
+
+```{r}
+lasso.coef[lasso.coef != 0]
+```
+
+**Validation Set approach**.
+
+Create a random sample of 50:50 split.
+
+```{r}
+
+set.seed(5)
+train <- sample (1: nrow (x), nrow (x) / 2)
+test <- (-train)
+```
+
+Fit the regression model using **lm**
+
+```{r}
+
+lm.fit1 <- lm(Y ~ ., real_estate_data, subset = train)
+summary(lm.fit1)
+```
+
+validation set test MSE
+
+```{r}
+validation.set.MSE <- mean((Y - predict(lm.fit1, real_estate_data))[-train]^2)
+validation.set.MSE
+```
+
+**'LOOCV'**
+
+```{r}
+set.seed(5)
+cv.error <- rep(0, 10)
+
+for (i in 1:10) {
+formula <- as.formula(paste("Y ~ poly(`X1 transaction date`, ", i, ") + poly(`X2 house age`, ", i, ") + poly(`X3 distance to the nearest MRT station`, ", i, ") + poly(`X4 number of convenience stores`, ", i, ") + poly(`X5 latitude`, ", i, ") + poly(`X6 longitude`, ", i, ")"))
+
+model_matrix <- model.matrix(formula, data = real_estate_data)
+glm.fit <- glm.fit <- glm.fit <- glm.fit <- glm.fit <- glm(formula, data = real_estate_data)
+cv.error[i] <- cv.glm(real_estate_data, glm.fit)$delta[1]
+}
+
+cv.error
+
+```
+
+**'k-Fold Cross-Validation**'
+
+```{r}
+set.seed(5)
+cv.error.k <- rep(0, 10)
+for (i in 1:10) {
+glm.fit <- glm(Y ~ poly(`X1 transaction date`, i)+poly(`X2 house age`, i)+poly(`X3 distance to the nearest MRT station`, i)+poly(`X4 number of convenience stores`, i)+poly(`X5 latitude`, i)+poly(`X6 longitude`, i), data = real_estate_data)
+cv.error.k[i] <- cv.glm(real_estate_data , glm.fit, K=5)$delta [1]
+}
+cv.error.k
+
+cv.error.k <- rep(0, 10)
+for (i in 1:10) {
+glm.fit <- glm(Y ~ poly(`X1 transaction date`, i)+poly(`X2 house age`, i)+poly(`X3 distance to the nearest MRT station`, i)+poly(`X4 number of convenience stores`, i)+poly(`X5 latitude`, i)+poly(`X6 longitude`, i), data = real_estate_data)
+cv.error.k[i] <- cv.glm(real_estate_data , glm.fit, K=10)$delta [1]
+}
+cv.error.k
+```
+
+**'Best Subset Selection'**
+
+Fit all possible regression models with best subset selection
+
+```{r}
+
+library(leaps)
+regfit.full <- regsubsets (Y  ~ ., real_estate_data)
+summary (regfit.full)
+```
+
+1)**Fit** all possible **regression models** with best subset selection, limiting to 6 predictors
+
+2)Obtain and display summary information about the models
+
+3)Display the names of available information in the summary
+
+4)Display the **R-squared values** for each model size
+
+```{r}
+regfit.full <- regsubsets (Y ~ ., data = real_estate_data ,nvmax = 6)
+reg.summary <- summary(regfit.full)
+names(reg.summary)
+reg.summary$rsq
+```
+
+1)Set up a 2x2 plotting layout
+
+2)Plot **Residual Sum of Squares (RSS)**
+
+3)Plot **Adjusted R-squared**
+
+4)Identify the index where **Adjusted R-squared** is maximized
+
+5)Highlight the point with **maximum Adjusted R-squared** in red
+
+6)Plot **Cp statistic**
+
+7)Identify the index where **Cp statistic** is minimized - Highlight the point with minimum Cp statistic in red
+
+8)Identify the index where **BIC is minimized**
+
+9)Plot **Bayesian Information Criterion** (BIC)
+
+```{r}
+par (mfrow = c(2, 2))
+plot (reg.summary$rss , xlab = " Number of Variables ", ylab = " RSS ", type = "l")
+
+plot (reg.summary$adjr2 , xlab = " Number of Variables ", ylab = " Adjusted RSq ", type = "l")
+which.max(reg.summary$adjr2)
+points (which.max (reg.summary$adjr2), reg.summary$adjr2[which.max (reg.summary$adjr2)], col = " red ", cex = 2,pch = 20)
+
+plot (reg.summary$cp, xlab = " Number of Variables ",ylab = "Cp", type = "l")
+which.min(reg.summary$cp)
+points (which.min(reg.summary$cp), reg.summary$cp[which.min(reg.summary$cp)], col = " red ", cex = 2,pch = 20)
+
+plot(reg.summary$bic , xlab = " Number of Variables ", ylab = " BIC ", type = "l")
+which.min (reg.summary$bic)
+points (which.min (reg.summary$bic), reg.summary$bic[which.min(reg.summary$bic)], col = " red ", cex = 2, pch = 20)
+```
+
+**regfit.full** is the result obtained from **regsubsets**.
+
+1)Plot **R-squared** for each model size
+
+2)Plot **Adj** **R-squared** for each model size
+
+3)Plot **Cp statistic** for each model size
+
+4)Plot **Bayesian Information Criterion** (BIC) for each model size
+
+```{r}
+plot (regfit.full , scale = "r2")
+plot (regfit.full , scale = "adjr2")
+plot (regfit.full , scale = "Cp")
+plot (regfit.full , scale = "bic")
+```
+
+Extract coefficients for the model with **6** variables
+
+```{r}
+coef(regfit.full , 5)
+```
+
+Choosing Among Models Using the **Cross-Validation** approach
+
+Splitting the data set into training data and testing data set
+
+```{r}
+set.seed(5)
+train <- sample(c(TRUE , FALSE), nrow(real_estate_data), replace = TRUE)
+test <- (!train)
+```
+
+```{r}
+regfit.best <- regsubsets(Y ~ ., data = real_estate_data[train, ], nvmax = 6)
+```
+
+The **mode.matrix**() function is used to create X matrix for extracting the coefficients and and multiplying them accordingly with columns to obtain MSE
+
+```{r}
+test.mat <- model.matrix(Y ~ ., data = real_estate_data[test, ])
+```
+
+Calculating the MSE for all variable combinations
+
+```{r}
+val.errors <- rep(NA, 6)
+for (i in 1:6) {
+coefi <- coef(regfit.best , id = i)
+pred <- test.mat[, names(coefi)] %*% coefi
+val.errors[i] <- mean (( real_estate_data$Y[test] - pred)^2)
+}
+```
+
+Finding the best model using the error values
+
+```{r}
+val.errors
+which.min(val.errors)
+coef(regfit.best , which.min(val.errors))
+```
+
+[**Analysis**]{.underline}:
+
+1.  We have trained and validated Real estate valuation dataset with various regression models and below are the observations
+1.  Linear Regression Test MSE : 77.129
+2.  Ridge regression model test MSE : 105.952
+3.  Lasso regression model test MSE : 104.443
+4.  Validation set test MSE : 78.235
+5.  LOOCV min error : 60.3 with degree = 3
+6.  K fold CV : 62.2 with k = 10 and degree = 3
+7.  Best Subset selection test MSE : 69.281
+
+[**Conclusion**]{.underline} : So, the least MSE for Real estate valuation dataset occurs at training the model using LOOCV at polynomial degree of 3(Cubic). We can notice that Cubic polynomial in every cross validation outperforms and evaluating the least MSE than other degree polynomials. Also, Subset Selection performs well when the data contains 5 predictor variables.
